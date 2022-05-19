@@ -1,18 +1,24 @@
 import os
 import sys
 import gzip
-from io import BytesIO
 import json
 import hashlib
 import shutil
 import requests
 import tarfile
 import urllib3
+import boto3
+
 urllib3.disable_warnings()
+
 
 if len(sys.argv) != 2 :
 	print('Usage:\n\tdocker_pull.py [registry/][repository/]image[:tag|@digest]\n')
 	exit(1)
+
+print('Fetching AWS ECR access token')
+ecr_client = boto3.client('ecr')
+auth_token = ecr_client.get_authorization_token()['authorizationData'][0]['authorizationToken']
 
 # Look for the Docker image to download
 repo = 'library'
@@ -22,9 +28,10 @@ try:
     img,tag = imgparts[-1].split('@')
 except ValueError:
 	try:
-	    img,tag = imgparts[-1].split(':')
+		img,tag = imgparts[-1].split(':')
 	except ValueError:
 		img = imgparts[-1]
+
 # Docker client doesn't seem to consider the first element as a potential registry unless there is a '.' or ':'
 if len(imgparts) > 1 and ('.' in imgparts[0] or ':' in imgparts[0]):
 	registry = imgparts[0]
@@ -37,23 +44,20 @@ else:
 		repo = 'library'
 repository = '{}/{}'.format(repo, img)
 
+repository = repository[1:]
+
+print(f"Registry : {registry}")
+print(f"Image    : {repository} (Tag: {tag})")
+
 # Get Docker authentication endpoint when it is required
-auth_url='https://auth.docker.io/token'
-reg_service='registry.docker.io'
-resp = requests.get('https://{}/v2/'.format(registry), verify=False)
-if resp.status_code == 401:
-	auth_url = resp.headers['WWW-Authenticate'].split('"')[1]
-	try:
-		reg_service = resp.headers['WWW-Authenticate'].split('"')[3]
-	except IndexError:
-		reg_service = ""
+auth_url=f'https://{registry}'
 
 # Get Docker token (this function is useless for unauthenticated registries like Microsoft)
 def get_auth_head(type):
-	resp = requests.get('{}?service={}&scope=repository:{}:pull'.format(auth_url, reg_service, repository), verify=False)
-	access_token = resp.json()['token']
-	auth_head = {'Authorization':'Bearer '+ access_token, 'Accept': type}
-	return auth_head
+	headers = {
+		'Authorization': 'Basic {}'.format(auth_token)
+	}
+	return headers
 
 # Docker style progress bar
 def progress_bar(ublob, nb_traits):
@@ -70,12 +74,12 @@ def progress_bar(ublob, nb_traits):
 
 # Fetch manifest v2 and get image layer digests
 auth_head = get_auth_head('application/vnd.docker.distribution.manifest.v2+json')
-resp = requests.get('https://{}/v2/{}/manifests/{}'.format(registry, repository, tag), headers=auth_head, verify=False)
+resp = requests.get('https://{}/v2/{}/manifests/{}'.format(registry, repository, tag), headers=auth_head)
 if (resp.status_code != 200):
 	print('[-] Cannot fetch manifest for {} [HTTP {}]'.format(repository, resp.status_code))
 	print(resp.content)
 	auth_head = get_auth_head('application/vnd.docker.distribution.manifest.list.v2+json')
-	resp = requests.get('https://{}/v2/{}/manifests/{}'.format(registry, repository, tag), headers=auth_head, verify=False)
+	resp = requests.get('https://{}/v2/{}/manifests/{}'.format(registry, repository, tag), headers=auth_head)
 	if (resp.status_code == 200):
 		print('[+] Manifests found for this tag (use the @digest format to pull the corresponding image):')
 		manifests = resp.json()['manifests']
@@ -92,7 +96,7 @@ os.mkdir(imgdir)
 print('Creating image structure in: ' + imgdir)
 
 config = resp.json()['config']['digest']
-confresp = requests.get('https://{}/v2/{}/blobs/{}'.format(registry, repository, config), headers=auth_head, verify=False)
+confresp = requests.get('https://{}/v2/{}/blobs/{}'.format(registry, repository, config), headers=auth_head)
 file = open('{}/{}.json'.format(imgdir, config[7:]), 'wb')
 file.write(confresp.content)
 file.close()
@@ -129,9 +133,9 @@ for layer in layers:
 	sys.stdout.write(ublob[7:19] + ': Downloading...')
 	sys.stdout.flush()
 	auth_head = get_auth_head('application/vnd.docker.distribution.manifest.v2+json') # refreshing token to avoid its expiration
-	bresp = requests.get('https://{}/v2/{}/blobs/{}'.format(registry, repository, ublob), headers=auth_head, stream=True, verify=False)
+	bresp = requests.get('https://{}/v2/{}/blobs/{}'.format(registry, repository, ublob), headers=auth_head, stream=True)
 	if (bresp.status_code != 200): # When the layer is located at a custom URL
-		bresp = requests.get(layer['urls'][0], headers=auth_head, stream=True, verify=False)
+		bresp = requests.get(layer['urls'][0], headers=auth_head, stream=True)
 		if (bresp.status_code != 200):
 			print('\rERROR: Cannot download layer {} [HTTP {}]'.format(ublob[7:19], bresp.status_code, bresp.headers['Content-Length']))
 			print(bresp.content)
@@ -194,7 +198,7 @@ file.write(json.dumps(content))
 file.close()
 
 # Create image tar and clean tmp folder
-docker_tar = repo.replace('/', '_') + '_' + img + '.tar'
+docker_tar = f'{img}-{tag}.tar'
 sys.stdout.write("Creating archive...")
 sys.stdout.flush()
 tar = tarfile.open(docker_tar, "w")

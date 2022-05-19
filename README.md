@@ -1,24 +1,14 @@
-# docker-drag
-This repository contains Python scripts for interacting with Docker Hub or other registries, without needing the Docker client itself.
+# docker-drag-aws-ecr
 
-It relies on the Docker registry [HTTPS API v2](https://docs.docker.com/registry/spec/api/).
+This repository contains Python scripts for interacting with AWS ECR without needing the Docker client itself.
+
+It relies on the Docker registry API supported by AWS ECR [HTTPS API v2](https://docs.docker.com/registry/spec/api/) [AWS DOCS](https://docs.aws.amazon.com/AmazonECR/latest/userguide/registry_auth.html)
 
 ## Pull a Docker image in HTTPS
 
-`python docker_pull.py hello-world`
+`python3 docker_pull.py <aws-account-id>.dkr.ecr.<repository-region>.amazonaws.com/<image-name>:<image-tag>`
 
-`python docker_pull.py mysql/mysql-server:8.0`
-
-`python docker_pull.py mcr.microsoft.com/mssql-tools`
-
-`python docker_pull.py consul@sha256:6ba4bfe1449ad8ac5a76cb29b6c3ff54489477a23786afb61ae30fb3b1ac0ae9`
-
-<p align="center">
-  <img src="https://user-images.githubusercontent.com/26483750/77766160-8da6f080-703f-11ea-953c-fd69978cb3bf.gif">
-</p>
-
-## Limitations
-- Only support v2 manifests: some registries, like quay.io which only uses v1 manifests, may not work.
+`python3 docker_pull.py 123456789123.dkr.ecr.us-east-1.amazonaws.com/my-test-image:1`
 
 ## Well known bugs
 2 open bugs which shouldn't affect the efficiency of the script nor the pulled image:
