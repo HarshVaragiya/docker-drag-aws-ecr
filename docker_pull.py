@@ -89,7 +89,6 @@ if (resp.status_code != 200):
 			print('digest: {}'.format(manifest["digest"]))
 	exit(1)
 layers = resp.json()['layers']
-
 # Create tmp folder that will hold the image
 imgdir = 'tmp_{}_{}'.format(img, tag.replace(':', '@'))
 os.mkdir(imgdir)
@@ -106,10 +105,16 @@ content = [{
 	'RepoTags': [ ],
 	'Layers': [ ]
 	}]
+
 if len(imgparts[:-1]) != 0:
-	content[0]['RepoTags'].append('/'.join(imgparts[:-1]) + '/' + img + ':' + tag)
+	if "sha256" in tag:
+		content[0]['RepoTags'].append('/'.join(imgparts[:-1]) + '/' + img + ':' + tag.replace('sha256:', ''))
+	else:
+		content[0]['RepoTags'].append('/'.join(imgparts[:-1]) + '/' + img + ':' + tag)
+	
 else:
 	content[0]['RepoTags'].append(img + ':' + tag)
+print(f"Pulling Image Tag: {content[0]['RepoTags'][0]}")
 
 empty_json = '{"created":"1970-01-01T00:00:00Z","container_config":{"Hostname":"","Domainname":"","User":"","AttachStdin":false, \
 	"AttachStdout":false,"AttachStderr":false,"Tty":false,"OpenStdin":false, "StdinOnce":false,"Env":null,"Cmd":null,"Image":"", \
