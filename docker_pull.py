@@ -109,6 +109,7 @@ content = [{
 if len(imgparts[:-1]) != 0:
 	if "sha256" in tag:
 		content[0]['RepoTags'].append('/'.join(imgparts[:-1]) + '/' + img + ':' + tag.replace('sha256:', ''))
+		tag = tag.replace('sha256:', '')
 	else:
 		content[0]['RepoTags'].append('/'.join(imgparts[:-1]) + '/' + img + ':' + tag)
 	
@@ -191,7 +192,7 @@ for layer in layers:
 	file.close()
 
 file = open(imgdir + '/manifest.json', 'w')
-file.write(json.dumps(content))
+file.write(json.dumps(content, indent=4))
 file.close()
 
 if len(imgparts[:-1]) != 0:
